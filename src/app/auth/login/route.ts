@@ -1,18 +1,25 @@
-import { getClient, getSession, clientConfig, defaultSession } from '@/lib';
-import { generators } from 'openid-client';
+import { getClientConfig, getSession, clientConfig } from '@/lib';
+import * as client from 'openid-client'
 
 export async function GET() {
-    const session = await getSession();
-    session.code_verifier = generators.codeVerifier();
-    const code_challenge = generators.codeChallenge(session.code_verifier);
-    const client = await getClient();
-    const url = client.authorizationUrl({
-        scope: clientConfig.scope,
-        audience: clientConfig.audience,
-        redirect_uri: clientConfig.redirect_uri,
+    const session = await getSession()
+    let code_verifier = client.randomPKCECodeVerifier()
+    let code_challenge = await client.calculatePKCECodeChallenge(code_verifier)
+    const openIdClientConfig = await getClientConfig()
+    let parameters: Record<string, string> = {
+        "redirect_uri": clientConfig.redirect_uri,
+        "scope": clientConfig.scope!,
         code_challenge,
-        code_challenge_method: 'S256',
-    });
-    await session.save();
-    return Response.redirect(url);
+        "code_challenge_method": clientConfig.code_challenge_method,
+    }
+    let state!: string
+    if (!openIdClientConfig.serverMetadata().supportsPKCE()) {
+        state = client.randomState()
+        parameters.state = state
+    }
+    let redirectTo = client.buildAuthorizationUrl(openIdClientConfig, parameters)
+    session.code_verifier = code_verifier
+    session.state = state
+    await session.save()
+    return Response.redirect(redirectTo.href)
 }

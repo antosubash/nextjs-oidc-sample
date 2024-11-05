@@ -1,6 +1,6 @@
 import { IronSession, SessionOptions, getIronSession } from "iron-session"
 import { cookies } from "next/headers"
-import { Issuer } from "openid-client"
+import * as client from 'openid-client'
 
 export const clientConfig = {
     url: process.env.NEXT_PUBLIC_API_URL,
@@ -12,27 +12,28 @@ export const clientConfig = {
     response_type: 'code',
     grant_type: 'authorization_code',
     post_login_route: `${process.env.NEXT_PUBLIC_APP_URL}`,
+    code_challenge_method: 'S256'
 }
 
 export interface SessionData {
     isLoggedIn: boolean
     access_token?: string
     code_verifier?: string
+    state?: string
     userInfo?: {
         sub: string
         name: string
         email: string
         email_verified: boolean
     }
-    tenantId?: string
 }
 
 export const defaultSession: SessionData = {
     isLoggedIn: false,
     access_token: undefined,
     code_verifier: undefined,
+    state: undefined,
     userInfo: undefined,
-    tenantId: undefined,
 }
 
 export const sessionOptions: SessionOptions = {
@@ -47,7 +48,8 @@ export const sessionOptions: SessionOptions = {
 };
 
 export async function getSession(): Promise<IronSession<SessionData>> {
-    let session = await getIronSession<SessionData>(cookies(), sessionOptions)
+    const cookiesList = await cookies()
+    let session = await getIronSession<SessionData>(cookiesList, sessionOptions)
     if (!session.isLoggedIn) {
         session.access_token = defaultSession.access_token
         session.userInfo = defaultSession.userInfo
@@ -55,13 +57,6 @@ export async function getSession(): Promise<IronSession<SessionData>> {
     return session
 }
 
-export async function getClient() {
-    const abpIssuer = await Issuer.discover(clientConfig.url!);
-    const client = new abpIssuer.Client({
-        client_id: clientConfig.client_id!,
-        response_types: ['code'],
-        redirect_uris: [clientConfig.redirect_uri],
-        token_endpoint_auth_method: "none"
-    });
-    return client;
+export async function getClientConfig() {
+    return await client.discovery(new URL(clientConfig.url!), clientConfig.client_id!);
 }
